@@ -1,0 +1,410 @@
+<html>
+<head>
+	<meta charset="utf-8">
+	<title></title>
+	<style type="text/css">
+		.point {
+			cursor: pointer;
+		}
+		.hidden {
+			display:none;
+		}
+		#input {
+			width: 300px;
+			float: left;
+		}
+		#extract {
+			float: left;
+			margin: 0 auto;
+			width: 730px;
+			border-left: 1px solid grey;
+			border-right: 1px solid grey;
+		}
+		#title {
+			margin: 0 auto;
+			text-align: center;
+
+		}
+		#title td{
+			border: 1px solid grey;
+			border-collapse: collapse;
+		}
+		#subGroup {
+			padding: 8px;
+			position: absolute;
+			width: 300px;
+			z-index: 999;
+			right: 5px;
+			background-color: rgb(200,200,200);
+			margin: 2 auto;
+		}
+		#namesCase{
+			overflow: hidden;
+		}
+		#namesCase label {
+			float: left;
+			margin-left: 5px;
+		}
+		.tip {
+			font-family: arial;
+			font-size: 11px;
+			color: red;
+
+		}
+
+	</style>
+</head>
+<body onload="def()">
+	<div id="input">
+		<form name="input">
+			<select name="cat" size=1 onchange="updName()">
+			</select>Категория<span onclick="addCat('cat')" class="point"> +</span><br />
+			<input type="hidden" name="catId">
+			<select name="name" size=1>
+			</select>Наименование<span onclick="addCat('name')" class="point"> +</span><br />
+			<input type="number" name="amount">Количество<br />
+			<input type="number" name="price">Цена<br />
+			<input type="date" name="date">Дата<br />
+			<input type="checkbox" name="reg">Регулярный<br />
+			<input type="button" name="send" value="Добавить платеж" onclick="checkData()">
+		</form>
+	</div>
+	<div id="extract">
+		<table id="title">
+			<tr class="point" onclick="sort()">
+				<td style="width:180px">name</td>
+				<td style="width:50px">amount</td>
+				<td style="width:50px">price</td>
+				<td style="width:180px">cat</td>
+				<td style="width:80px">date</td>
+				<td style="width:30px">reg</td>
+				<td style="width:50px">sum</td>
+			</tr>
+		</table>
+	</div>
+	<div id="filtr">
+		<form name="filtr">
+			<span>Быстрый фильтр:</span><br />
+			<input type="text" name="query">Строка запроса<br />
+			<input type="button" value="Применить фильтр" onclick="fltr()">
+			<br /><a href=# onclick='toggleRules()'>Создать подгруппу</a>
+		</form>
+	<div id="subGroup" class="hidden">
+		<form name="crtSbGrp">
+			Выберите категорию: <br />
+			<select name="cat" size=1 onchange="showNames()">
+			</select>
+			<br /><span>Выберите наименования: </span><br />
+			<div id="namesCase"></div>
+			<div id="ctrl">
+				<input type="button" onclick="applySbGrp()" value="применить">
+				<input type="text" name="savedName" placeholder="Название*" id="savedName">
+				<br /><span class="tip">*Укажите название для сохранения</span>
+			</div>
+		</form>
+	</div>		
+		<ul id="savedGroups">
+		</ul>
+	</div>
+
+
+</body>
+<script type="text/javascript">
+	function checkData () {
+		var form = document.forms['input'];
+		updCatId(form);
+	}
+	function updCatId (form, data) {
+		var db = openDatabase('expenses', '1.0', 'Затраты', 2 * 1024 * 1024);
+		if(!db){alert("Failed to connect to database.");}
+		if(form.newCat){
+			db.transaction(function(tx) {
+				tx.executeSql('INSERT INTO ctg (cat) VALUES("' + form.newCat.value + '")'); 
+			});
+		}
+		var cat = (form.newCat) ? form.newCat.value : form.cat.value;
+		db.transaction(function(tx) {
+				tx.executeSql('SELECT * FROM ctg WHERE cat = "' + cat + '"', [], 
+				function(tx, result){
+					document.forms['input'].catId.value = result.rows.item(0)['id'];
+					var data = {
+						name: (form.newname) ? form.newname.value : form.name.value,
+						amount: form.amount.value,
+						price: form.price.value,
+						cat: form.catId.value,
+						date: form.date.value,
+						reg: (form.reg.checked) ? true : false,
+					};
+					addPayment(data);
+				}, 
+				function(tx, er){
+					alert(er);
+				});
+			});
+	}
+	function addPayment (data) {
+		console.log(data)
+		var db = openDatabase('expenses', '1.0', 'Затраты', 2 * 1024 * 1024);
+		var values = '';
+		for( var i in data ){
+			values += '"' + data[i] + '",';
+		}
+		values = values.slice(0,-1);
+		db.transaction(function(tx){
+			var sql = 'INSERT INTO payments values (' + values + ')';
+			tx.executeSql(sql, [],
+			function (){
+				updForm();
+			},
+			function (tx, error){
+				alert(error);
+			});
+		});
+		
+	}
+	function updForm () {
+		var form = document.forms['input'];
+		form.name.value = null;
+		form.amount.value = null;
+		form.price.value = null;
+		form.reg.checked = false;
+		if(form.newCat){
+			var option = document.createElement('option');
+			option.innerHTML = form.newCat.value;
+			var opClone = option.cloneNode(true);
+			document.forms['input'].cat.appendChild(option);
+			document.forms['crtSbGrp'].cat.appendChild(opClone);
+			toggleClassName(form.cat, 'hidden');
+			form.removeChild(form.newCat);
+		}
+		if(form.newname){
+			var option = document.createElement('option');
+			option.innerHTML = form.newname.value;
+			document.forms['input'].name.appendChild(option);
+			toggleClassName(form.name, 'hidden');
+			form.removeChild(form.newname);
+		}
+		extract();
+	}
+
+
+	function def() {
+		setCurDate();
+		updSelect();
+		extract();	
+	}
+	function setCurDate () {
+		var curDate = new Date();
+		curDate = curDate.getFullYear() + '-' 
+			+ ('0' + (curDate.getMonth() + 1)).slice(-2) + '-' 
+			+ ('0' + curDate.getDate()).slice(-2);
+		document.forms['input'].date.value = curDate;		
+	}
+	function updSelect () {
+		var db = openDatabase('expenses', '1.0', 'Затраты', 2 * 1024 * 1024);
+		if(!db){alert("Failed to connect to database.");}
+		db.transaction(function(tx) {
+			tx.executeSql("SELECT * FROM ctg", [], 
+				function(tx, result){
+					for( var i = 0; i < result.rows.length; i++ ){
+						var option = document.createElement('option');
+						option.innerHTML = result.rows.item(i)['cat'];
+						var opClone = option.cloneNode(true);
+						document.forms['input'].cat.appendChild(option);
+						document.forms['crtSbGrp'].cat.appendChild(opClone);
+					}
+					updName();
+				}, 
+				function(tx, error){
+					alert(error);
+				});
+		});
+	}
+	function updName () {
+		var s = document.forms['input'].cat.value;
+		var n = document.forms['input'].name;
+		while(n.firstChild) n.removeChild(n.lastChild);
+		var db = openDatabase('expenses', '1.0', 'Затраты', 2 * 1024 * 1024);
+		if(!db){alert("Failed to connect to database.");}
+		db.transaction(function(tx) {
+			var sql = 'SELECT name FROM payments, ctg WHERE payments.cat = ctg.id AND ctg.cat = "' + s + '" GROUP  BY name';
+			console.log(sql);
+			tx.executeSql(sql, [], 
+				function(tx, result){
+					for( var i = 0; i < result.rows.length; i++ ){
+						var option = document.createElement('option');
+						option.innerHTML = result.rows.item(i)['name'];
+						var opClone = option.cloneNode(true);
+						document.forms['input'].name.appendChild(option);
+					}
+				}, 
+				function(tx, error){
+					alert(error);
+				});
+		});		
+		
+	}
+	function addCat(t) {
+		console.log(t);
+		var form = document.forms['input'];
+		toggleClassName(form[t], 'hidden');
+		if(form[t].className.indexOf('hidden') != -1){
+			var txt = document.createElement('input');
+			txt.type = 'text';
+			txt.name = 'new' + t;
+			form.insertBefore(txt, form[t]);			
+		}else{
+			var t = 'new' + t;
+			form.removeChild(form[t]);
+		}
+	}
+	function toggleClassName(obj, className){
+		var strt = obj.className.indexOf(className)
+		if(strt == -1){
+			obj.className += ' ' + className;
+		}else{
+			obj.className = obj.className.substr(0, strt) + obj.className.substr(strt + className.length);
+		}
+	}
+	function setCatId (value) {
+		var db = openDatabase('expenses', '1.0', 'Затраты', 2 * 1024 * 1024);
+		if(!db){alert("Failed to connect to database.");}
+		db.transaction(function(tx) {
+		tx.executeSql('SELECT id FROM ctg WHERE cat = "' + value + '"', [], 
+			function(tx, result){
+				document.forms['input'].catId.value = result.rows.item(0)['id'];
+			}, 
+			function(tx, error){
+				alert(error);
+			});
+		});
+	}
+	function extract () {
+		var table = document.getElementById('title');
+		while (table.lastChild.tagName != 'TBODY'){
+			table.removeChild(table.lastChild);
+		}
+		var sql = 'SELECT name, amount, price, ctg.cat, date, reg FROM payments, ctg WHERE payments.cat = ctg.id';
+		if(window.sessionStorage.filtrBy) sql += window.sessionStorage.filtrBy;
+		if(window.sessionStorage.sortBy) {
+			sql += " ORDER BY " + window.sessionStorage.sortBy
+		}else{
+			sql += " ORDER BY date DESC"
+		};
+
+		var db = openDatabase('expenses', '1.0', 'Затраты', 2 * 1024 * 1024);
+		if(!db){alert("Failed to connect to database.");}
+		db.transaction(function(tx) {
+		tx.executeSql(sql, [], 
+			function(tx, result){
+				if(result.rows.length > 0){
+					var total = 0;
+					var table = document.getElementById('title');
+					for( var i = 0; i< result.rows.length; i++){
+						var tr = document.createElement('tr');
+						for( var j in result.rows.item(i) ){
+							var td = document.createElement('td');
+							td.innerHTML = result.rows.item(i)[j];
+							tr.appendChild(td);
+						}
+						var td = document.createElement('td');
+						total += result.rows.item(i)['price'] * result.rows.item(i)['amount'];
+						td.innerHTML = Math.floor(result.rows.item(i)['price'] * result.rows.item(i)['amount']*100)/100;
+						tr.appendChild(td);
+						table.appendChild(tr);
+					}
+					var tr = document.createElement('tr');
+					var td = document.createElement('td');
+					td['colSpan'] = 5;
+					td.innerHTML = 'Итого';
+					tr.appendChild(td);
+					td = document.createElement('td');
+					td.colSpan = 2;
+					td.innerHTML = Math.floor(total * 100) / 100;
+					tr.appendChild(td);
+					table.appendChild(tr);
+				}
+			}, 
+			function(tx, error){
+				alert(error);
+			});
+		});
+	}
+	function sort (e) {
+		if(!e) e = window.event;
+		var target = e.target.innerHTML;
+		if(target == 'sum'){
+			window.sessionStorage.sortBy = 'amount * price';
+		}else{
+			if(target == 'cat'){
+				window.sessionStorage.sortBy = 'ctg.cat'; 
+			}else{	
+				window.sessionStorage.sortBy = target;
+			}
+		}
+		extract();
+	}
+	function toggleRules (e) {
+		if(!e) e = window.event;
+		var sB = document.getElementById('subGroup');
+		toggleClassName(sB, 'hidden');
+		showNames();
+	}
+	function showNames () {
+		var selectedCat = document.forms['crtSbGrp'].cat.value;
+		var db = openDatabase('expenses', '1.0', 'Затраты', 2 * 1024 * 1024);
+		if(!db){alert("Failed to connect to database.");}
+		var sql = 'SELECT name FROM payments, ctg WHERE payments.cat = ctg.id AND ctg.cat = "' + selectedCat + '" GROUP BY name';
+		db.transaction(function(tx) {
+			tx.executeSql(sql, [],
+				function(tx, result){
+					var namesCase = document.getElementById('namesCase');
+					while(namesCase.lastChild) namesCase.removeChild(namesCase.lastChild);
+					for(var i = 0; i < result.rows.length; i++){
+						var lbl = document.createElement('label');
+						lbl.className = 'point';
+						lbl.innerHTML = result.rows.item(i).name;
+						var chbx = document.createElement('input');
+						chbx.type = 'checkbox';
+						//chbx.name = result.rows.item(i).name;
+						lbl.appendChild(chbx);
+						namesCase.appendChild(lbl);
+					}
+				},
+				function(tx, error){
+					alert(error)
+				}
+			);
+		});
+	}
+
+	function applySbGrp () {
+		
+	 	var sG = document.forms['crtSbGrp'];
+	 	var fltr = ' AND ctg.cat = "' + sG.cat.value + '" AND (';
+	 	for(var i in sG.elements){
+	 		if( sG.elements[i].type == 'checkbox' && sG.elements[i].checked){
+	 			var name = sG.elements[i].parentNode.innerHTML;
+	 			name = name.substr(0, name.indexOf('<'));
+	 			fltr += 'name = "' + name + '" OR ';
+	 		}
+	 	}
+	 	fltr = fltr.slice(0, -3) + ')';
+	 	window.sessionStorage.filtrBy = fltr;
+	 	toggleClassName(document.getElementById('subGroup'), 'hidden');
+	 	extract();
+	 	var savedName = document.getElementById('savedName').value;
+	 	if( savedName != ''){
+	 		window.localStorage[savedName] = fltr;
+	 		loadSavedGroups();
+	 	}
+	 }
+	 function loadSavedGroups () {
+	 	var lclSt = window.localStorage;
+	 	for( var i in window.lclSt){
+
+	 	}
+	 }
+
+</script>
+</html>
